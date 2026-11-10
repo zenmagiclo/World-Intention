@@ -1,1 +1,141 @@
 
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #070914;
+  color: #e8edff;
+  font-family: Arial, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+
+#game-container {
+  width: min(1100px, 96vw);
+}
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+h1 {
+  font-size: 25px;
+  letter-spacing: 7px;
+  color: #b8dfff;
+}
+
+.game-header p {
+  color: #697b9d;
+  font-size: 10px;
+  letter-spacing: 3px;
+  margin-top: 8px;
+}
+
+.level-label {
+  color: #8c9fca;
+  font-size: 11px;
+  letter-spacing: 2px;
+  border: 1px solid #273655;
+  padding: 10px 15px;
+}
+
+#game-screen {
+  position: relative;
+  width: 100%;
+  height: min(650px, 70vh);
+  min-height: 350px;
+  overflow: hidden;
+  border: 1px solid #253454;
+  border-radius: 8px;
+  background:
+    radial-gradient(ellipse at 50% 50%, #172440 0%, #0a1020 60%, #070914 100%);
+  box-shadow: 0 0 60px #152e5740;
+}
+
+canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+}
+
+canvas:active {
+  cursor: grabbing;
+}
+
+#start-screen,
+#win-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: #070914cc;
+  text-align: center;
+  gap: 18px;
+  z-index: 2;
+}
+
+#start-screen h2,
+#win-screen h2 {
+  letter-spacing: 6px;
+  font-size: 23px;
+  color: #bce5ff;
+}
+
+#start-screen p,
+#win-screen p {
+  color: #8292b2;
+  font-size: 13px;
+}
+
+button {
+  padding: 14px 28px;
+  background: transparent;
+  color: #bce5ff;
+  border: 1px solid #5a9bce;
+  letter-spacing: 3px;
+  cursor: pointer;
+  transition: 0.25s;
+}
+
+button:hover {
+  background: #3478a633;
+  box-shadow: 0 0 25px #4bb9ff55;
+}
+
+.hidden {
+  display: none !important;
+}
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 16px;
+  color: #657897;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+
+@media (max-width: 600px) {
+  h1 {
+    font-size: 17px;
+    letter-spacing: 4px;
+  }
+
+  footer {
+    flex-wrap: wrap;
+    font-size: 8px;
+  }
+}
