@@ -9,7 +9,7 @@ a game about letting a little guy named "Drifter" cross the dimensions.
  
 i know these sound weird but just trust me. 
  
-#####R -- Reset the level 
+##### R -- Reset the level 
 
 ### Mouse Controls
 ##### left-click + drag -- grab/move obstacle 
