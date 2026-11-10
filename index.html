@@ -1,1 +1,44 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World Intention</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="game-container">
+    <header class="game-header">
+      <div>
+        <h1>WORLD INTENTION</h1>
+        <p>THE WORLD MOVES. YOU DECIDE HOW.</p>
+      </div>
+      <div class="level-label">DIMENSION 01</div>
+    </header>
+
+    <section id="game-screen">
+      <canvas id="gameCanvas"></canvas>
+
+      <div id="start-screen">
+        <h2>THE FIRST SHIFT</h2>
+        <p>Change the world. Guide the traveler.</p>
+        <button id="startButton">ENTER WORLD</button>
+      </div>
+
+      <div id="win-screen" class="hidden">
+        <h2>DIMENSION COMPLETE</h2>
+        <p>You found a way through.</p>
+        <button id="restartButton">PLAY AGAIN</button>
+      </div>
+    </section>
+
+    <footer>
+      <span>DRAG OBJECTS TO MOVE THEM</span>
+      <span>ARROW KEYS: SHIFT WORLD</span>
+      <span>R: RESET</span>
+    </footer>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>
 
