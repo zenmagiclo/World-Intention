@@ -3,31 +3,51 @@ const ctx = canvas.getContext("2d");
 
 const startScreen = document.getElementById("start-screen");
 const winScreen = document.getElementById("win-screen");
+const winTime = document.getElementById("winTime");
 
-let width, height;
+const STEP = 1 / 60;          // fixed physics step (seconds)
+const RUN_SPEED = 1.4;
+const SHIFT_SPEED = 3;
+const SPAWN_X = 85;
+
+let width = 0;
+let height = 0;
 let playing = false;
-let won = false;
+let elapsed = 0;
+let time = 0;
+let accumulator = 0;
+let lastFrame = performance.now();
 
 const player = {
-  x: 85,
+  x: SPAWN_X,
   y: 100,
   radius: 12,
-  vx: 1.4,
+  vx: RUN_SPEED,
   vy: 0,
   gravity: 0.28,
   grounded: false
 };
 
-// Everything here can be moved independently.
 let objects = [];
-let portal = {};
+let portal = { x: 0, y: 0, radius: 25 };
+let trail = [];
+
+// Stars are generated once, as fractions of the screen.
+const stars = Array.from({ length: 65 }, (_, i) => ({
+  fx: (i * 0.6180339) % 1,
+  fy: (i * 0.3819660 + (i % 7) * 0.07) % 1,
+  alpha: 0.15 + (i % 5) * 0.08
+}));
+
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
 function createLevel() {
-  player.x = 85;
+  player.x = SPAWN_X;
   player.y = height - 160;
-  player.vx = 1.4;
+  player.vx = RUN_SPEED;
   player.vy = 0;
   player.grounded = false;
+  trail = [];
 
   objects = [
     { x: 0, y: height - 35, w: width * 0.35, h: 35, type: "platform" },
@@ -45,56 +65,80 @@ function createLevel() {
     radius: 25
   };
 
-  won = false;
   winScreen.classList.add("hidden");
+}
+
+function startRun() {
+  createLevel();
+  elapsed = 0;
+  playing = true;
 }
 
 function resize() {
   const rect = canvas.getBoundingClientRect();
+  const oldW = width;
+  const oldH = height;
+
   width = rect.width;
   height = rect.height;
 
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  createLevel();
+  if (!oldW || !oldH) {
+    createLevel();
+    return;
+  }
+
+  // Keep the current progress instead of wiping the level on resize.
+  const sx = width / oldW;
+  const sy = height / oldH;
+
+  objects.forEach(o => {
+    o.x *= sx;
+    o.w *= sx;
+    o.y *= sy;
+    o.h *= sy;
+  });
+
+  portal.x *= sx;
+  portal.y *= sy;
+  player.x *= sx;
+  player.y *= sy;
+  trail = [];
 }
 
 window.addEventListener("resize", resize);
 
-// Draw the background.
+/* ---------- Drawing ---------- */
+
 function drawBackground() {
   ctx.fillStyle = "#0a1020";
   ctx.fillRect(0, 0, width, height);
 
-  // Stars
-  for (let i = 0; i < 65; i++) {
-    const x = (i * 137.5) % width;
-    const y = (i * 83.7) % height;
+  stars.forEach(s => {
+    const twinkle = 0.75 + 0.25 * Math.sin(time * 1.5 + s.fx * 40);
+    ctx.fillStyle = `rgba(160, 200, 255, ${s.alpha * twinkle})`;
+    ctx.fillRect(s.fx * width, s.fy * height, 2, 2);
+  });
 
-    ctx.fillStyle = `rgba(160, 200, 255, ${0.15 + (i % 5) * 0.08})`;
-    ctx.fillRect(x, y, 2, 2);
-  }
-
-  // Subtle grid
   ctx.strokeStyle = "rgba(100, 150, 220, 0.045)";
   ctx.lineWidth = 1;
+  ctx.beginPath();
 
   for (let x = 0; x < width; x += 45) {
-    ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, height);
-    ctx.stroke();
   }
 
   for (let y = 0; y < height; y += 45) {
-    ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(width, y);
-    ctx.stroke();
   }
+
+  ctx.stroke();
 }
 
 function drawObjects() {
@@ -122,7 +166,25 @@ function drawObjects() {
       ctx.strokeRect(obj.x, obj.y, obj.w, obj.h);
     }
 
+    if (obj === dragging) {
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 4]);
+      ctx.strokeRect(obj.x - 3, obj.y - 3, obj.w + 6, obj.h + 6);
+    }
+
     ctx.restore();
+  });
+}
+
+function drawTrail() {
+  trail.forEach(p => {
+    const t = p.life / 24;
+    ctx.fillStyle = `rgba(120, 234, 255, ${t * 0.35})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, player.radius * 0.6 * t, 0, Math.PI * 2);
+    ctx.fill();
   });
 }
 
@@ -139,7 +201,7 @@ function drawPlayer() {
 
   glow.addColorStop(0, "#ffffff");
   glow.addColorStop(0.35, "#78eaff");
-  glow.addColorStop(1, "#2676ff00");
+  glow.addColorStop(1, "rgba(38, 118, 255, 0)");
 
   ctx.fillStyle = glow;
   ctx.beginPath();
@@ -157,17 +219,21 @@ function drawPlayer() {
 function drawPortal() {
   ctx.save();
 
+  const pulse = 1 + Math.sin(time * 3) * 0.05;
+
   ctx.shadowBlur = 25;
   ctx.shadowColor = "#b15cff";
   ctx.strokeStyle = "#c28aff";
   ctx.lineWidth = 4;
 
   ctx.beginPath();
-  ctx.arc(portal.x, portal.y, portal.radius, 0, Math.PI * 2);
+  ctx.arc(portal.x, portal.y, portal.radius * pulse, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.strokeStyle = "#6945a5";
+  ctx.strokeStyle = "#8f63d6";
   ctx.lineWidth = 2;
+  ctx.setLineDash([6, 6]);
+  ctx.lineDashOffset = -time * 20;
 
   ctx.beginPath();
   ctx.arc(portal.x, portal.y, portal.radius - 8, 0, Math.PI * 2);
@@ -176,78 +242,116 @@ function drawPortal() {
   ctx.restore();
 }
 
-// Basic physics and platform collisions.
+function drawHud() {
+  ctx.save();
+  ctx.fillStyle = "rgba(140, 159, 202, 0.8)";
+  ctx.font = "11px Arial, sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(elapsed.toFixed(1) + "s", width - 14, 22);
+  ctx.restore();
+}
+
+function draw() {
+  drawBackground();
+  drawObjects();
+  drawPortal();
+  drawTrail();
+  drawPlayer();
+  if (playing) drawHud();
+}
+
+/* ---------- Physics ---------- */
+
+// Circle vs. rectangle resolution. Works for tops, sides, and corners,
+// and handles the player's center ending up inside a box.
+function resolveCollisions() {
+  player.grounded = false;
+  const r = player.radius;
+
+  for (let pass = 0; pass < 3; pass++) {
+    for (const obj of objects) {
+      const cx = clamp(player.x, obj.x, obj.x + obj.w);
+      const cy = clamp(player.y, obj.y, obj.y + obj.h);
+      const dx = player.x - cx;
+      const dy = player.y - cy;
+      const d2 = dx * dx + dy * dy;
+
+      if (d2 >= r * r) continue;
+
+      let nx = 0;
+      let ny = 0;
+
+      if (d2 === 0) {
+        const toLeft = player.x - obj.x;
+        const toRight = obj.x + obj.w - player.x;
+        const toTop = player.y - obj.y;
+        const toBottom = obj.y + obj.h - player.y;
+        const m = Math.min(toLeft, toRight, toTop, toBottom);
+
+        if (m === toTop) {
+          player.y = obj.y - r;
+          ny = -1;
+        } else if (m === toLeft) {
+          player.x = obj.x - r;
+          nx = -1;
+        } else if (m === toRight) {
+          player.x = obj.x + obj.w + r;
+          nx = 1;
+        } else {
+          player.y = obj.y + obj.h + r;
+          ny = 1;
+        }
+      } else {
+        const d = Math.sqrt(d2);
+        nx = dx / d;
+        ny = dy / d;
+        const push = r - d;
+        player.x += nx * push;
+        player.y += ny * push;
+      }
+
+      if (ny < -0.5) {
+        player.grounded = true;
+        if (player.vy > 0) player.vy = 0;
+      } else if (ny > 0.5 && player.vy < 0) {
+        player.vy = 0;
+      }
+    }
+  }
+}
+
 function updatePlayer() {
-  player.vy += player.gravity;
-  player.vy = Math.min(player.vy, 9);
+  player.vy = Math.min(player.vy + player.gravity, 9);
+
+  // The traveler always walks forward; walls simply stop it until you move them.
+  player.vx = RUN_SPEED;
 
   player.x += player.vx;
   player.y += player.vy;
 
-  player.grounded = false;
+  resolveCollisions();
 
-  objects.forEach(obj => {
-    const overlapsX =
-      player.x + player.radius > obj.x &&
-      player.x - player.radius < obj.x + obj.w;
-
-    const crossedTop =
-      player.y + player.radius >= obj.y &&
-      player.y + player.radius - player.vy <= obj.y;
-
-    if (overlapsX && crossedTop && player.vy >= 0) {
-      player.y = obj.y - player.radius;
-      player.vy = 0;
-      player.grounded = true;
-    }
-
-    // Side collision
-    const overlapsY =
-      player.y + player.radius > obj.y &&
-      player.y - player.radius < obj.y + obj.h;
-
-    const crossedSide =
-      player.x + player.radius > obj.x &&
-      player.x - player.radius < obj.x + obj.w;
-
-    if (overlapsY && crossedSide && !crossedTop) {
-      if (player.vx > 0 && player.x < obj.x) {
-        player.x = obj.x - player.radius;
-        player.vx = 0;
-      } else if (player.vx < 0 && player.x > obj.x + obj.w) {
-        player.x = obj.x + obj.w + player.radius;
-        player.vx = 0;
-      }
-    }
-  });
-
-  // Small automatic forward movement.
-  if (player.grounded && player.vx === 0) {
-    player.vx = 1.4;
-  }
-
-  // Fall out of the dimension.
+  // Fell out of the dimension: reset the world so it can't become unwinnable.
   if (player.y > height + 50) {
-    player.x = 85;
-    player.y = 80;
-    player.vy = 0;
-    player.vx = 1.4;
+    createLevel();
+    return;
   }
 
-  // Reach the portal.
-  const distance = Math.hypot(
-    player.x - portal.x,
-    player.y - portal.y
-  );
+  const distance = Math.hypot(player.x - portal.x, player.y - portal.y);
 
   if (distance < portal.radius + player.radius) {
-    won = true;
     playing = false;
+    winTime.textContent = `Time: ${elapsed.toFixed(1)}s`;
     winScreen.classList.remove("hidden");
   }
 }
 
-// Shift the environment without directly moving the player.
+function updateTrail() {
+  trail.push({ x: player.x, y: player.y, life: 24 });
+  trail.forEach(p => p.life--);
+  trail = trail.filter(p => p.life > 0);
+}
+
 function shiftWorld(dx, dy) {
   objects.forEach(obj => {
     obj.x += dx;
@@ -258,25 +362,29 @@ function shiftWorld(dx, dy) {
   portal.y += dy;
 }
 
-// Mouse dragging.
+/* ---------- Input ---------- */
+
 let dragging = null;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
+let panning = false;
+let lastPointerX = 0;
+let lastPointerY = 0;
+
+function pointerPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
 
 canvas.addEventListener("pointerdown", e => {
   if (!playing) return;
 
-  const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
+  const { x: mx, y: my } = pointerPos(e);
 
   for (let i = objects.length - 1; i >= 0; i--) {
     const obj = objects[i];
 
-    if (
-      mx >= obj.x && mx <= obj.x + obj.w &&
-      my >= obj.y && my <= obj.y + obj.h
-    ) {
+    if (mx >= obj.x && mx <= obj.x + obj.w && my >= obj.y && my <= obj.y + obj.h) {
       dragging = obj;
       dragOffsetX = mx - obj.x;
       dragOffsetY = my - obj.y;
@@ -289,64 +397,90 @@ canvas.addEventListener("pointerdown", e => {
       return;
     }
   }
+
+  // Dragging empty space shifts the whole world (works on touch screens too).
+  panning = true;
+  lastPointerX = mx;
+  lastPointerY = my;
+  canvas.setPointerCapture(e.pointerId);
 });
 
 canvas.addEventListener("pointermove", e => {
-  if (!dragging) return;
+  const { x: mx, y: my } = pointerPos(e);
 
-  const rect = canvas.getBoundingClientRect();
-
-  dragging.x = e.clientX - rect.left - dragOffsetX;
-  dragging.y = e.clientY - rect.top - dragOffsetY;
+  if (dragging) {
+    dragging.x = mx - dragOffsetX;
+    dragging.y = my - dragOffsetY;
+  } else if (panning) {
+    shiftWorld(mx - lastPointerX, my - lastPointerY);
+    lastPointerX = mx;
+    lastPointerY = my;
+  }
 });
 
-function stopDragging() {
+function stopPointer() {
   dragging = null;
+  panning = false;
 }
 
-canvas.addEventListener("pointerup", stopDragging);
-canvas.addEventListener("pointercancel", stopDragging);
+canvas.addEventListener("pointerup", stopPointer);
+canvas.addEventListener("pointercancel", stopPointer);
+window.addEventListener("blur", () => {
+  stopPointer();
+  keys.clear();
+});
 
-// Keyboard controls.
 const keys = new Set();
+const SHIFT_KEYS = new Set([
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "w", "a", "s", "d"
+]);
 
 window.addEventListener("keydown", e => {
-  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+
+  if (SHIFT_KEYS.has(key)) {
     e.preventDefault();
-    keys.add(e.key);
+    keys.add(key);
   }
 
-  if (e.key.toLowerCase() === "r") {
-    createLevel();
+  if (key === "r" && !e.repeat && (playing || !winScreen.classList.contains("hidden"))) {
+    startRun();
   }
 });
 
 window.addEventListener("keyup", e => {
-  keys.delete(e.key);
+  keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key);
 });
 
 function updateWorld() {
-  const speed = 3;
-
-  if (keys.has("ArrowLeft")) shiftWorld(speed, 0);
-  if (keys.has("ArrowRight")) shiftWorld(-speed, 0);
-  if (keys.has("ArrowUp")) shiftWorld(0, speed);
-  if (keys.has("ArrowDown")) shiftWorld(0, -speed);
+  if (keys.has("ArrowLeft") || keys.has("a")) shiftWorld(SHIFT_SPEED, 0);
+  if (keys.has("ArrowRight") || keys.has("d")) shiftWorld(-SHIFT_SPEED, 0);
+  if (keys.has("ArrowUp") || keys.has("w")) shiftWorld(0, SHIFT_SPEED);
+  if (keys.has("ArrowDown") || keys.has("s")) shiftWorld(0, -SHIFT_SPEED);
 }
 
-function draw() {
-  drawBackground();
-  drawObjects();
-  drawPortal();
-  drawPlayer();
+/* ---------- Loop ---------- */
+
+function step() {
+  if (!playing) return;
+
+  elapsed += STEP;
+  if (!dragging && !panning) updateWorld();
+  updatePlayer();
+  updateTrail();
 }
 
-function gameLoop() {
-  if (playing && !dragging) {
-    updateWorld();
-    updatePlayer();
-  } else if (playing) {
-    updatePlayer();
+function gameLoop(now) {
+  // Fixed timestep so the game runs at the same speed on 60/120/144 Hz screens.
+  const delta = Math.min((now - lastFrame) / 1000, 0.1);
+  lastFrame = now;
+  time += delta;
+  accumulator += delta;
+
+  while (accumulator >= STEP) {
+    step();
+    accumulator -= STEP;
   }
 
   draw();
@@ -355,14 +489,10 @@ function gameLoop() {
 
 document.getElementById("startButton").addEventListener("click", () => {
   startScreen.classList.add("hidden");
-  playing = true;
+  startRun();
 });
 
-document.getElementById("restartButton").addEventListener("click", () => {
-  createLevel();
-  playing = true;
-});
+document.getElementById("restartButton").addEventListener("click", startRun);
 
 resize();
-gameLoop();
-
+requestAnimationFrame(gameLoop);
