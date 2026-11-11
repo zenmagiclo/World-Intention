@@ -1,7 +1,9 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="World Intention: a puzzle platformer where you move the world, not the traveler.">
   <title>World Intention</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -16,24 +18,25 @@
     </header>
 
     <section id="game-screen">
-      <canvas id="gameCanvas"></canvas>
+      <canvas id="gameCanvas" aria-label="World Intention game board"></canvas>
 
       <div id="start-screen">
         <h2>THE FIRST SHIFT</h2>
         <p>Change the world. Guide the traveler.</p>
-        <button id="startButton">ENTER WORLD</button>
+        <button id="startButton" type="button">ENTER WORLD</button>
       </div>
 
-      <div id="win-screen" class="hidden">
+      <div id="win-screen" class="hidden" role="status" aria-live="polite">
         <h2>DIMENSION COMPLETE</h2>
         <p>You found a way through.</p>
-        <button id="restartButton">PLAY AGAIN</button>
+        <p id="winTime"></p>
+        <button id="restartButton" type="button">PLAY AGAIN</button>
       </div>
     </section>
 
     <footer>
       <span>DRAG OBJECTS TO MOVE THEM</span>
-      <span>ARROW KEYS: SHIFT WORLD</span>
+      <span>ARROWS / WASD / DRAG EMPTY SPACE: SHIFT WORLD</span>
       <span>R: RESET</span>
     </footer>
   </main>
@@ -41,4 +44,3 @@
   <script src="game.js"></script>
 </body>
 </html>
-
