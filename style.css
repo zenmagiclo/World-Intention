@@ -66,15 +66,12 @@ canvas {
   width: 100%;
   height: 100%;
   display: block;
-  cursor: grab;
   touch-action: none;      /* lets touch dragging work without scrolling the page */
   user-select: none;
   -webkit-user-select: none;
 }
 
-canvas:active {
-  cursor: grabbing;
-}
+/* ---------- Overlays ---------- */
 
 #start-screen,
 #win-screen {
@@ -82,14 +79,22 @@ canvas:active {
   inset: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  background: #070914cc;
-  text-align: center;
-  gap: 18px;
+  background: #070914d9;
   z-index: 2;
   padding: 20px;
+  overflow-y: auto;
   animation: fade-in 0.4s ease;
+}
+
+.panel {
+  margin: auto;               /* centers, but stays scrollable on small screens */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  max-width: 640px;
+  width: 100%;
 }
 
 #start-screen h2,
@@ -105,11 +110,6 @@ canvas:active {
   font-size: 13px;
 }
 
-#winTime {
-  color: #bce5ff;
-  letter-spacing: 2px;
-}
-
 button {
   padding: 14px 28px;
   background: transparent;
@@ -118,10 +118,10 @@ button {
   font-family: inherit;
   letter-spacing: 3px;
   cursor: pointer;
-  transition: background 0.25s, box-shadow 0.25s;
+  transition: background 0.25s, box-shadow 0.25s, opacity 0.25s;
 }
 
-button:hover {
+button:hover:not(:disabled) {
   background: #3478a633;
   box-shadow: 0 0 25px #4bb9ff55;
 }
@@ -131,9 +131,137 @@ button:focus-visible {
   outline-offset: 3px;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
 .hidden {
   display: none !important;
 }
+
+/* ---------- Level select ---------- */
+
+.level-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.level-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 6px;
+  letter-spacing: 1px;
+  border-color: #2f4a70;
+}
+
+.lv-num {
+  font-size: 18px;
+  letter-spacing: 3px;
+  color: #bce5ff;
+}
+
+.lv-name {
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  color: #6f83a8;
+  min-height: 10px;
+}
+
+.lv-stars {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #ffd75e;
+}
+
+.level-btn:disabled .lv-stars {
+  font-size: 8px;
+  color: #53627e;
+}
+
+.link-btn {
+  border: none;
+  padding: 6px 10px;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #53627e;
+}
+
+.link-btn:hover:not(:disabled) {
+  background: transparent;
+  box-shadow: none;
+  color: #8c9fca;
+}
+
+/* ---------- Win screen ---------- */
+
+.win-stars {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #5a6a8a;
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.win-stars li span {
+  display: inline-block;
+  width: 24px;
+  font-size: 16px;
+  vertical-align: middle;
+}
+
+.win-stars li.earned {
+  color: #ffe48a;
+}
+
+.win-time {
+  letter-spacing: 2px;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+/* ---------- In-game buttons ---------- */
+
+.controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 6px;
+  z-index: 1;
+}
+
+.controls button {
+  padding: 8px 12px;
+  font-size: 9px;
+  letter-spacing: 2px;
+  background: #070914aa;
+  border-color: #2f4a70;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#stasisButton.active {
+  background: #6dc8ff44;
+  border-color: #aee6ff;
+  box-shadow: 0 0 22px #6dc8ff77;
+}
+
+/* ---------- Footer ---------- */
 
 footer {
   display: flex;
@@ -161,7 +289,7 @@ footer {
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 700px) {
   h1 {
     font-size: 17px;
     letter-spacing: 4px;
@@ -175,6 +303,22 @@ footer {
   #win-screen h2 {
     font-size: 18px;
     letter-spacing: 4px;
+  }
+
+  .level-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .controls {
+    left: 10px;
+    right: 10px;
+    justify-content: center;
+    bottom: 34px;
+  }
+
+  .controls button {
+    padding: 8px 8px;
+    letter-spacing: 1px;
   }
 
   footer {
