@@ -14,30 +14,49 @@
         <h1>WORLD INTENTION</h1>
         <p>THE WORLD MOVES. YOU DECIDE HOW.</p>
       </div>
-      <div class="level-label">DIMENSION 01</div>
+      <div class="level-label" id="levelLabel">DIMENSION 01</div>
     </header>
 
     <section id="game-screen">
       <canvas id="gameCanvas" aria-label="World Intention game board"></canvas>
 
+      <div class="controls hidden" id="controls">
+        <button id="stasisButton" type="button" title="Hold to freeze the traveler (Space)">HOLD: STASIS</button>
+        <button id="resetButton" type="button" title="Restart this dimension (R)">RESET</button>
+        <button id="menuButton" type="button" title="Back to the menu (Esc)">MENU</button>
+        <button id="soundButton" type="button" title="Toggle sound (M)">SOUND: ON</button>
+      </div>
+
       <div id="start-screen">
-        <h2>THE FIRST SHIFT</h2>
-        <p>Change the world. Guide the traveler.</p>
-        <button id="startButton" type="button">ENTER WORLD</button>
+        <div class="panel">
+          <h2>THE FIRST SHIFT</h2>
+          <p>Change the world. Guide the traveler.</p>
+          <button id="startButton" type="button">ENTER WORLD</button>
+          <div class="level-grid" id="levelGrid"></div>
+          <button id="clearSave" class="link-btn" type="button">RESET PROGRESS</button>
+        </div>
       </div>
 
       <div id="win-screen" class="hidden" role="status" aria-live="polite">
-        <h2>DIMENSION COMPLETE</h2>
-        <p>You found a way through.</p>
-        <p id="winTime"></p>
-        <button id="restartButton" type="button">PLAY AGAIN</button>
+        <div class="panel">
+          <h2 id="winTitle">DIMENSION COMPLETE</h2>
+          <p id="winText">You found a way through.</p>
+          <ul id="winStars" class="win-stars"></ul>
+          <p id="winTime" class="win-time"></p>
+          <div class="btn-row">
+            <button id="nextButton" type="button">NEXT DIMENSION</button>
+            <button id="restartButton" type="button">PLAY AGAIN</button>
+            <button id="winMenuButton" type="button">MENU</button>
+          </div>
+        </div>
       </div>
     </section>
 
     <footer>
       <span>DRAG OBJECTS TO MOVE THEM</span>
-      <span>ARROWS / WASD / DRAG EMPTY SPACE: SHIFT WORLD</span>
-      <span>R: RESET</span>
+      <span>ARROWS / WASD / DRAG EMPTY SPACE: SLIDE THE WORLD</span>
+      <span>HOLD SPACE: STASIS</span>
+      <span>ENTER: GO · R: RESET · ESC: MENU · M: SOUND</span>
     </footer>
   </main>
 
