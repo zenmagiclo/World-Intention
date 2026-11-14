@@ -21,6 +21,8 @@
       <canvas id="gameCanvas" aria-label="World Intention game board"></canvas>
 
       <div class="controls hidden" id="controls">
+        <button id="undoButton" type="button" title="Undo your last move while planning (U / Ctrl+Z)">UNDO</button>
+        <button id="hintButton" type="button" title="Show where the pieces could go (H)">HINT</button>
         <button id="stasisButton" type="button" title="Hold to freeze the traveler (Space)">HOLD: STASIS</button>
         <button id="resetButton" type="button" title="Restart this dimension (R)">RESET</button>
         <button id="menuButton" type="button" title="Back to the menu (Esc)">MENU</button>
@@ -56,7 +58,7 @@
       <span>DRAG OBJECTS TO MOVE THEM</span>
       <span>ARROWS / WASD / DRAG EMPTY SPACE: SLIDE THE WORLD</span>
       <span>HOLD SPACE: STASIS</span>
-      <span>ENTER: GO · R: RESET · ESC: MENU · M: SOUND</span>
+      <span>U: UNDO · H: HINT · ENTER: GO · R: RESET · ESC: MENU · M: SOUND</span>
     </footer>
   </main>
 
