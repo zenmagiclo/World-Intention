@@ -28,6 +28,8 @@ const stasisButton = $("stasisButton");
 const resetButton = $("resetButton");
 const menuButton = $("menuButton");
 const soundButton = $("soundButton");
+const undoButton = $("undoButton");
+const hintButton = $("hintButton");
 
 /* ---------- Constants ---------- */
 const WORLD_W = 1000;          // the world is always 1000 x 600 and scaled to fit
@@ -43,6 +45,9 @@ const SHIFT_SPEED = 3.2;
 const GRAVITY = 0.28;
 const MAX_FALL = 9;
 const BOUNCE_V = 12.5;
+const ICE_SPEED = 3.3;         // speed the traveler slides up to on ice
+const BELT_SPEED = 1.0;        // conveyor push
+const CRUMBLE_TIME = 0.7;      // seconds before a crumbling platform drops
 
 const STASIS_MAX = 5;          // seconds of stasis in a full meter
 const STASIS_DRAIN = 1;
@@ -71,12 +76,26 @@ const block  = (x, y, w, h) => ({ x, y, w, h, type: "block" });
 const spikes = (x, w, fixed = false, surface = GROUND_Y) => ({ x, y: surface - 24, w, h: 24, type: "spike", fixed });
 const spring = (x, y, w = 44) => ({ x, y, w, h: 12, type: "bounce" });
 const mover  = (x, y, w, ax, ay, speed, phase = 0) => ({ x, y, w, h: 20, type: "mover", ax, ay, speed, phase });
+const flip   = (x, y, h = 120) => ({ x, y, w: 30, h, type: "flip" });
+const ice    = (x, y, w) => ({ x, y, w, h: 20, type: "ice" });
+const iceGround = (x, w) => ({ x, y: GROUND_Y, w, h: WORLD_H - GROUND_Y, type: "ice", fixed: true });
+const belt   = (x, y, w, dir = 1) => ({ x, y, w, h: 20, type: "belt", dir });
+const beltGround = (x, w, dir = 1, push = 0) => ({ x, y: GROUND_Y, w, h: WORLD_H - GROUND_Y, type: "belt", dir, push, fixed: true });
+const wind   = (x, y, w, h, ax, ay) => ({ x, y, w, h, type: "wind", ax, ay });
+const ceil   = (x, w) => ({ x, y: 0, w, h: 50, type: "platform", fixed: true });
+const crumble = (x, y, w) => ({ x, y, w, h: 20, type: "crumble" });
+// saw(centerX, centerY, radius, travelX, travelY, speed, phase)
+const saw    = (cx, cy, r = 22, ax = 0, ay = 0, speed = 1, phase = 0) =>
+  ({ x: cx - r, y: cy - r, w: r * 2, h: r * 2, type: "saw", r, ax, ay, speed, phase });
+const sw     = (x, y, link, fixed = false, up = false) => ({ x, y, w: 44, h: 10, type: "switch", link, fixed, up });
+const door   = (x, y, h, link) => ({ x, y, w: 22, h, type: "door", link, fixed: true });
 
 const LEVELS = [
   {
     name: "FIRST SHIFT",
     hint: "Drag the plank over the gap and clear the wall. Arrow keys slide the whole world.",
     par: 18,
+    solution: [[2, 300, 565], [3, 700, 250]],
     portal: { x: 940, y: 530 },
     objects: [
       ground(0, 330), ground(520, 480),
@@ -89,6 +108,7 @@ const LEVELS = [
     name: "THORNS",
     hint: "Spikes are deadly. Drag them out of the way.",
     par: 16,
+    solution: [[1, 250, 100], [2, 520, 100], [3, 780, 250]],
     portal: { x: 940, y: 530 },
     objects: [
       ground(0, 1000),
@@ -101,6 +121,7 @@ const LEVELS = [
     name: "SPRING",
     hint: "These spikes are anchored. Place the spring pad just before them to leap over.",
     par: 18,
+    solution: [[2, 392, 553], [3, 780, 250]],
     portal: { x: 940, y: 530 },
     objects: [
       ground(0, 1000),
@@ -114,6 +135,7 @@ const LEVELS = [
     name: "TIDES",
     hint: "The bridge moves on its own. Hold SPACE to freeze the traveler while you wait for it.",
     par: 20,
+    solution: [[3, 860, 250]],
     portal: { x: 950, y: 530 },
     objects: [
       ground(0, 260), ground(740, 260),
@@ -126,6 +148,7 @@ const LEVELS = [
     name: "ASCENT",
     hint: "The portal is up on the cliff. Aim a spring pad so the traveler lands on top.",
     par: 18,
+    solution: [[2, 660, 553], [3, 380, 250]],
     portal: { x: 900, y: 312 },
     objects: [
       ground(0, 1000),
@@ -139,6 +162,7 @@ const LEVELS = [
     name: "SPLIT",
     hint: "Bridge the gap, spring over the anchored spikes, then clear the wall.",
     par: 22,
+    solution: [[2, 290, 565], [4, 590, 553], [5, 880, 250]],
     portal: { x: 955, y: 530 },
     objects: [
       ground(0, 300), ground(480, 520),
@@ -153,6 +177,7 @@ const LEVELS = [
     name: "ELEVATOR",
     hint: "Wait at the edge (SPACE) for the lift. Then spring over the spikes up top.",
     par: 26,
+    solution: [[4, 530, 353], [5, 830, 120]],
     portal: { x: 950, y: 330 },
     objects: [
       ground(0, 300),
@@ -168,6 +193,7 @@ const LEVELS = [
     name: "CONVERGENCE",
     hint: "Everything at once. Time the bridge, then place both springs.",
     par: 26,
+    solution: [[5, 512, 553], [6, 732, 553]],
     portal: { x: 930, y: 530 },
     objects: [
       ground(0, 200),
@@ -179,6 +205,121 @@ const LEVELS = [
       spring(260, 140)
     ],
     shards: [{ follow: 1, dx: 60, dy: -27 }, { x: 610, y: 285 }, { x: 830, y: 285 }]
+  },
+  {
+    name: "FLIPSIDE",
+    hint: "Magenta fields flip gravity. Flip onto the ceiling to pass the spikes, then flip back. You can only move 3 pieces.",
+    par: 15,
+    moves: 3,
+    solution: [[3, 250, 300], [4, 700, 40], [5, 880, 250]],
+    portal: { x: 945, y: 530 },
+    objects: [
+      ground(0, 1000), ceil(0, 1000),
+      spikes(380, 240, true),
+      flip(700, 300, 265), flip(790, 40, 200),
+      block(880, 445, 40, 120)
+    ],
+    shards: [{ x: 500, y: 72 }, { x: 820, y: 538 }]
+  },
+  {
+    name: "GLACIER",
+    hint: "Ice makes the traveler speed up and keep its momentum. Time the spring over the anchored spikes.",
+    par: 10,
+    solution: [[2, 460, 553], [3, 860, 250]],
+    portal: { x: 945, y: 530 },
+    objects: [
+      iceGround(0, 1000),
+      spikes(520, 80, true),
+      spring(130, GROUND_Y - 12),
+      block(860, 445, 40, 120)
+    ],
+    shards: [{ x: 560, y: 290 }, { x: 760, y: 538 }]
+  },
+  {
+    name: "TREADMILL",
+    hint: "The conveyor pushes backwards faster than the traveler can walk. Leap over it.",
+    par: 14,
+    solution: [[3, 294, 553], [4, 860, 250]],
+    portal: { x: 945, y: 530 },
+    objects: [
+      ground(0, 330), beltGround(330, 130, -1, 2.2), ground(460, 540),
+      spring(100, GROUND_Y - 12),
+      block(860, 445, 40, 120)
+    ],
+    shards: [{ x: 395, y: 300 }, { x: 700, y: 538 }]
+  },
+  {
+    name: "UPDRAFT",
+    hint: "A wind column can lift the traveler over the tower. Slide it into place.",
+    par: 10,
+    solution: [[2, 430, 300]],
+    portal: { x: 630, y: 222 },
+    objects: [
+      ground(0, 1000),
+      ledge(560, 250, 140),
+      wind(100, 300, 70, 265, 0, -0.55)
+    ],
+    shards: [{ x: 555, y: 72 }]
+  },
+  {
+    name: "LOCKSMITH",
+    hint: "Step on the glowing switch to unlock the door. It sits up on the ledge, so aim your spring. One move only.",
+    par: 14,
+    moves: 1,
+    solution: [[4, 210, 553]],
+    portal: { x: 945, y: 530 },
+    objects: [
+      ground(0, 1000),
+      ledge(300, 380, 160),
+      sw(370, 370, "a", true),
+      door(760, 235, 330, "a"),
+      spring(100, GROUND_Y - 12)
+    ],
+    shards: [{ x: 440, y: 355 }, { x: 850, y: 538 }]
+  },
+  {
+    name: "STEPPING STONES",
+    hint: "Crumbling tiles drop 0.7s after you land. Lay the plank, then chain the tiles flush behind it. Edges snap together.",
+    par: 15,
+    moves: 4,
+    solution: [[2, 260, 565], [3, 440, 565], [4, 490, 565], [5, 540, 565]],
+    portal: { x: 945, y: 530 },
+    objects: [
+      ground(0, 260), ground(590, 410),
+      plank(80, 150, 180),
+      crumble(330, 150, 50), crumble(420, 150, 50), crumble(510, 150, 50)
+    ],
+    shards: [{ x: 350, y: 545 }, { x: 515, y: 545 }]
+  },
+  {
+    name: "SAWMILL",
+    hint: "These saws are bolted down. Hold SPACE to freeze the traveler and wait for a gap.",
+    par: 18,
+    solution: [[3, 860, 250]],
+    portal: { x: 945, y: 530 },
+    objects: [
+      ground(0, 1000),
+      { ...saw(380, 485, 26, 0, 60, 2.0, 5.6), fixed: true },
+      { ...saw(620, 485, 26, 0, 60, 2.0, 0.7), fixed: true },
+      block(860, 445, 40, 120)
+    ],
+    shards: [{ x: 500, y: 538 }, { x: 760, y: 538 }]
+  },
+  {
+    name: "FINALE",
+    hint: "Flip to the ceiling to skip the spikes and trip the switch up there, then flip back down through the open door. 2 moves.",
+    par: 15,
+    moves: 2,
+    solution: [[3, 250, 300], [4, 700, 40]],
+    portal: { x: 945, y: 530 },
+    objects: [
+      ground(0, 1000), ceil(0, 1000),
+      spikes(360, 200, true),
+      flip(900, 300, 265), flip(900, 40, 200),
+      sw(600, 50, "a", true, true),
+      door(780, 50, 515, "a")
+    ],
+    shards: [{ x: 470, y: 72 }, { x: 870, y: 538 }]
   }
 ];
 
@@ -203,6 +344,26 @@ const THEMES = [
     top: "#1a0e30", bottom: "#0a0618", star: "220,190,255", grid: "170,120,230",
     portal: "#ff6cf0", portalSoft: "255,108,240",
     blobs: [{ x: 0.2, y: 0.7, r: 0.55, c: "rgba(170,80,255,0.20)" }, { x: 0.85, y: 0.3, r: 0.5, c: "rgba(255,80,200,0.12)" }]
+  },
+  {
+    top: "#0a2036", bottom: "#050d18", star: "200,235,255", grid: "130,200,240",
+    portal: "#7fe3ff", portalSoft: "127,227,255",
+    blobs: [{ x: 0.25, y: 0.3, r: 0.55, c: "rgba(90,200,255,0.18)" }, { x: 0.8, y: 0.75, r: 0.5, c: "rgba(120,160,255,0.13)" }]
+  },
+  {
+    top: "#241a08", bottom: "#0f0a04", star: "255,225,160", grid: "230,180,90",
+    portal: "#ffcf5c", portalSoft: "255,207,92",
+    blobs: [{ x: 0.3, y: 0.7, r: 0.55, c: "rgba(255,190,70,0.16)" }, { x: 0.8, y: 0.3, r: 0.5, c: "rgba(255,120,60,0.12)" }]
+  },
+  {
+    top: "#08200f", bottom: "#040f08", star: "170,255,190", grid: "100,220,130",
+    portal: "#5cff8a", portalSoft: "92,255,138",
+    blobs: [{ x: 0.2, y: 0.4, r: 0.55, c: "rgba(70,230,120,0.16)" }, { x: 0.85, y: 0.7, r: 0.5, c: "rgba(60,200,200,0.12)" }]
+  },
+  {
+    top: "#2a0a20", bottom: "#12040e", star: "255,170,220", grid: "240,100,180",
+    portal: "#ff5ca8", portalSoft: "255,92,168",
+    blobs: [{ x: 0.25, y: 0.6, r: 0.55, c: "rgba(255,70,160,0.18)" }, { x: 0.8, y: 0.25, r: 0.5, c: "rgba(170,70,255,0.14)" }]
   }
 ];
 
@@ -240,16 +401,35 @@ let stasisHeld = false;
 
 let result = null;
 
+// effects
+let rings = [];
+let popups = [];
+let introT = 0;
+let prevGrounded = true;
+let nextNote = 0;
+
+// planning tools
+let history = [];
+let movedIds = new Set();
+let pending = null;
+let dragStart = null;
+let hintOn = false;
+let hintUsed = false;
+
 const player = {
   x: SPAWN.x, y: SPAWN.y, vx: RUN_SPEED, vy: 0,
-  grounded: true, launched: false
+  grounded: true, launched: false, g: 1, onIce: false, belt: 0
 };
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const pad2 = n => String(n).padStart(2, "0");
 const starString = n => "★".repeat(n) + "☆".repeat(3 - n);
 const theme = () => THEMES[Math.min(THEMES.length - 1, Math.floor(levelIndex / 2))];
-const isSolid = o => o.type !== "spike";
+const NON_SOLID = new Set(["spike", "wind", "flip", "saw", "switch"]);
+const isSolid = o => !NON_SOLID.has(o.type) && !o.opened && !o.fallen;
+const isMoving = o => o.speed !== undefined && (o.ax || o.ay);
+const linkColor = l => ["#ffd75e", "#6dc8ff", "#ff8ad8", "#8dff9a"][(String(l).charCodeAt(0) || 0) % 4];
+const isZone = o => o.type === "wind" || o.type === "flip";
 
 /* ---------- Save data ---------- */
 function loadSave() {
@@ -303,6 +483,9 @@ function sfx(name) {
     case "win":    [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.3, "triangle", 0.07, 0, i * 0.1)); break;
     case "grab":   tone(400, 0.05, "sine", 0.03); break;
     case "stasis": tone(660, 0.3, "sine", 0.04, 330); break;
+    case "crumble": tone(130, 0.3, "sawtooth", 0.04, 45); break;
+    case "switch": tone(500, 0.1, "square", 0.04); tone(900, 0.18, "triangle", 0.05, 0, 0.08); break;
+    case "flip":   tone(260, 0.35, "sawtooth", 0.04, 1000); tone(1000, 0.2, "triangle", 0.03, 400, 0.12); break;
   }
 }
 
@@ -313,9 +496,9 @@ function loadLevel(i, clearFx = true) {
   levelIndex = i;
   const lvl = LEVELS[i];
 
-  objects = lvl.objects.map(o => ({ ...o, bx: o.x, by: o.y, ox: 0, oy: 0, squash: 0 }));
+  objects = lvl.objects.map((o, k) => ({ ...o, id: k, bx: o.x, by: o.y, ox: 0, oy: 0, squash: 0 }));
   objects.forEach(o => {
-    if (o.type === "mover") {
+    if (isMoving(o)) {
       const s = Math.sin(o.phase);
       o.ox = o.ax * s;
       o.oy = o.ay * s;
@@ -342,9 +525,20 @@ function loadLevel(i, clearFx = true) {
   player.vy = 0;
   player.grounded = true;
   player.launched = false;
+  player.g = 1;
+  player.onIce = false;
+  player.belt = 0;
 
   trail = [];
-  if (clearFx) particles = [];
+  if (clearFx) { particles = []; rings = []; popups = []; }
+  introT = clearFx ? 0 : 0.7;
+  prevGrounded = true;
+  history = [];
+  movedIds = new Set();
+  pending = null;
+  dragStart = null;
+  hintOn = false;
+  hintButton.classList.toggle("hidden", !lvl.solution);
   tt = 0;
   elapsed = 0;
   camX = 0;
@@ -365,7 +559,7 @@ function enterReady() {
 }
 
 function startLevel(i, fresh = true) {
-  if (fresh) deaths = 0;
+  if (fresh) { deaths = 0; hintUsed = false; }
   loadLevel(i);
   startScreen.classList.add("hidden");
   winScreen.classList.add("hidden");
@@ -388,6 +582,7 @@ function beginRun() {
   elapsed = 0;
   sfx("go");
   burst(player.x, player.y, 10, "120,234,255", 2, 0.5, 2);
+  ring(player.x, player.y, "120,234,255", 50, 0.5, 3);
 }
 
 function showMenu() {
@@ -438,6 +633,14 @@ function burst(x, y, n, rgb, speed = 3, life = 0.8, size = 3) {
   }
 }
 
+function ring(x, y, rgb, maxR = 60, life = 0.6, width = 3) {
+  if (rings.length < 40) rings.push({ x, y, rgb, maxR, life, max: life, width });
+}
+
+function popup(text, x, y, rgb = "255,228,138") {
+  if (popups.length < 20) popups.push({ text, x, y, rgb, life: 1, max: 1 });
+}
+
 function spawnPortalSwirl() {
   if (particles.length > 400 || Math.random() > 0.35) return;
   particles.push({
@@ -462,11 +665,85 @@ function updateParticles() {
     }
   }
   particles = particles.filter(p => p.life > 0 && !(p.kind === "swirl" && p.r < 8));
+
+  rings.forEach(r => { r.life -= STEP; });
+  rings = rings.filter(r => r.life > 0);
+  popups.forEach(q => { q.life -= STEP; q.y -= 0.6; });
+  popups = popups.filter(q => q.life > 0);
+  if (introT < 1) introT = Math.min(1, introT + STEP / 0.7);
 }
 
 /* ================================================================
    PHYSICS
    ================================================================ */
+function captureWorld() {
+  return {
+    objs: objects.map(o => [o, o.x, o.y, o.bx, o.by]),
+    portal: [portal.x, portal.y],
+    shards: shards.map(sh => [sh.x, sh.y]),
+    cam: [camX, camY],
+    moved: new Set(movedIds)
+  };
+}
+
+function pushHistory(snap = captureWorld()) {
+  history.push(snap);
+  if (history.length > 40) history.shift();
+}
+
+function commitPending() {
+  if (pending && state === "ready") pushHistory(pending);
+  pending = null;
+}
+
+function undo() {
+  if (state !== "ready" || !history.length) return;
+  const h = history.pop();
+  h.objs.forEach(([o, x, y, bx, by]) => { o.x = x; o.y = y; o.bx = bx; o.by = by; });
+  portal.x = h.portal[0];
+  portal.y = h.portal[1];
+  shards.forEach((sh, i) => { sh.x = h.shards[i][0]; sh.y = h.shards[i][1]; });
+  camX = h.cam[0];
+  camY = h.cam[1];
+  movedIds = h.moved;
+  sfx("grab");
+}
+
+function toggleHint() {
+  if (!LEVELS[levelIndex].solution) return;
+  hintOn = !hintOn;
+  if (hintOn) hintUsed = true;
+}
+
+// Magnetic edges: dragged pieces snap flush to neighbours (hold Shift to disable).
+const SNAP = 9;
+const SNAPPY = new Set(["platform", "crumble", "ice", "belt", "mover", "block"]);
+
+function snapDrag(o) {
+  if (!SNAPPY.has(o.type)) return;
+  let dx = null;
+  let dy = null;
+
+  for (const p of objects) {
+    if (p === o || !isSolid(p)) continue;
+
+    if (o.y < p.y + p.h + 30 && o.y + o.h > p.y - 30) {
+      for (const d of [p.x + p.w - o.x, p.x - (o.x + o.w), p.x - o.x, p.x + p.w - (o.x + o.w)]) {
+        if (Math.abs(d) <= SNAP && (dx === null || Math.abs(d) < Math.abs(dx))) dx = d;
+      }
+    }
+
+    if (o.x < p.x + p.w + 30 && o.x + o.w > p.x - 30) {
+      for (const d of [p.y - o.y, p.y + p.h - o.y, p.y - (o.y + o.h)]) {
+        if (Math.abs(d) <= SNAP && (dy === null || Math.abs(d) < Math.abs(dy))) dy = d;
+      }
+    }
+  }
+
+  if (dx !== null) o.x += dx;
+  if (dy !== null) o.y += dy;
+}
+
 function shiftWorld(dx, dy) {
   objects.forEach(o => { o.x += dx; o.y += dy; o.bx += dx; o.by += dy; });
   shards.forEach(s => { if (!s.target) { s.x += dx; s.y += dy; } });
@@ -481,7 +758,7 @@ function updateMovers() {
   tt += STEP;
 
   for (const o of objects) {
-    if (o.type !== "mover") continue;
+    if (!isMoving(o)) continue;
 
     const oldX = o.x, oldY = o.y;
     const s = Math.sin(o.phase + tt * o.speed);
@@ -498,6 +775,7 @@ function updateMovers() {
     }
 
     const riding =
+      o.type === "mover" && player.g === 1 &&
       player.x > oldX - 2 && player.x < oldX + o.w + 2 &&
       Math.abs(player.y + PLAYER_R - oldY) < 3 && player.vy >= 0;
 
@@ -525,6 +803,9 @@ function updateMovers() {
 function resolveCollisions(allowBounce) {
   player.grounded = false;
   let bounced = null;
+  let onIce = false;
+  let belt = 0;
+  const gs = player.g;
   const r = PLAYER_R;
 
   for (let pass = 0; pass < 3; pass++) {
@@ -561,15 +842,19 @@ function resolveCollisions(allowBounce) {
         player.y += ny * push;
       }
 
-      if (ny < -0.5) {
+      if (ny * gs < -0.5) {
+        // standing on a surface (floor, or ceiling when gravity is flipped)
         player.grounded = true;
-        if (player.vy > 0) player.vy = 0;
-      } else if (ny > 0.5 && player.vy < 0) {
+        if (player.vy * gs > 0) player.vy = 0;
+        if (obj.type === "ice") onIce = true;
+        if (obj.type === "belt") belt = obj.dir * (obj.push || BELT_SPEED);
+        if (obj.type === "crumble" && !obj.timer) obj.timer = CRUMBLE_TIME;
+      } else if (ny * gs > 0.5 && player.vy * gs < 0) {
         player.vy = 0;
       }
 
       // touching a spring from above or from the side launches the traveler
-      if (allowBounce && obj.type === "bounce" && player.y < obj.y + obj.h) bounced = obj;
+      if (allowBounce && gs === 1 && obj.type === "bounce" && player.y < obj.y + obj.h) bounced = obj;
     }
   }
 
@@ -580,17 +865,54 @@ function resolveCollisions(allowBounce) {
     bounced.squash = 1;
     sfx("bounce");
     burst(player.x, player.y + PLAYER_R, 12, "120,255,170", 2.2, 0.5, 2.5);
+    ring(player.x, player.y + PLAYER_R, "120,255,170", 46, 0.45, 3);
+    shake = Math.max(shake, 0.12);
   }
+
+  player.onIce = onIce;
+  player.belt = belt;
 }
 
 function movePlayer() {
-  player.vy = Math.min(player.vy + GRAVITY, MAX_FALL);
-  player.vx = player.launched ? AIR_BOOST : RUN_SPEED;
+  const gs = player.g;
 
-  player.x += player.vx;
+  // wind zones push the traveler
+  for (const w of objects) {
+    if (w.type !== "wind") continue;
+    if (player.x > w.x && player.x < w.x + w.w && player.y > w.y && player.y < w.y + w.h) {
+      player.vy += w.ay;
+      player.x += w.ax;
+    }
+  }
+
+  player.vy += GRAVITY * gs;
+  if (player.vy * gs > MAX_FALL) player.vy = MAX_FALL * gs;
+
+  if (player.launched) player.vx = AIR_BOOST;
+  else if (player.onIce) player.vx += (ICE_SPEED - player.vx) * 0.025;
+  else if (!player.grounded && player.vx > RUN_SPEED) player.vx = Math.max(RUN_SPEED, player.vx - 0.004); // ice momentum
+  else player.vx = RUN_SPEED;
+
+  const fallV = player.vy * gs;
+
+  player.x += player.vx + player.belt;
   player.y += player.vy;
 
   resolveCollisions(true);
+
+  if (player.grounded && !prevGrounded && fallV > 3) {
+    burst(player.x, player.y + PLAYER_R * gs, 8, "190,220,255", 1.6, 0.4, 2);
+    ring(player.x, player.y + PLAYER_R * gs, "190,220,255", 22, 0.3, 2);
+  }
+  prevGrounded = player.grounded;
+
+  if (player.launched && Math.random() < 0.7) {
+    particles.push({
+      x: player.x - 8, y: player.y + (Math.random() - 0.5) * 12, vx: -1.2, vy: 0, g: 0,
+      life: 0.35, max: 0.35, size: 2, rgb: "170,255,210"
+    });
+  }
+
   if (player.grounded) player.launched = false;
 }
 
@@ -603,7 +925,82 @@ function hitsSpike() {
     const cy = clamp(player.y, y, y + h);
     if ((player.x - cx) ** 2 + (player.y - cy) ** 2 < r * r) return true;
   }
+
+  for (const o of objects) {
+    if (o.type !== "saw") continue;
+    if (Math.hypot(player.x - (o.x + o.r), player.y - (o.y + o.r)) < o.r + PLAYER_R - 4) return true;
+  }
   return false;
+}
+
+function updateHazards() {
+  for (const o of objects) {
+    if (o.type === "crumble") {
+      if (o.timer > 0 && !o.fallen) {
+        o.timer -= STEP;
+        if (o.timer <= 0) {
+          o.fallen = true;
+          o.fv = 0;
+          sfx("crumble");
+          burst(o.x + o.w / 2, o.y + 8, 14, "224,176,128", 2.5, 0.7, 2.5);
+        }
+      }
+      if (o.fallen) {
+        o.fv += 0.35;
+        o.fy = (o.fy || 0) + o.fv;
+      }
+    }
+
+    if (o.type === "door" && o.opened && (o.open || 0) < 1) {
+      o.open = Math.min(1, (o.open || 0) + 0.05);
+    }
+  }
+}
+
+function checkSwitches() {
+  for (const o of objects) {
+    if (o.type !== "switch" || o.on) continue;
+
+    const cx = clamp(player.x, o.x, o.x + o.w);
+    const cy = clamp(player.y, o.y, o.y + o.h);
+    if ((player.x - cx) ** 2 + (player.y - cy) ** 2 >= (PLAYER_R + 1) ** 2) continue;
+
+    o.on = true;
+    sfx("switch");
+    ring(o.x + o.w / 2, o.y + 4, "255,228,138", 50, 0.5, 3);
+    burst(o.x + o.w / 2, o.y + 4, 10, "255,228,138", 2.5, 0.6, 2);
+    shake = Math.max(shake, 0.1);
+
+    for (const d of objects) {
+      if (d.type === "door" && d.link === o.link && !d.opened) {
+        d.opened = true;
+        ring(d.x + d.w / 2, d.y + d.h / 2, "120,255,170", 80, 0.6, 3);
+        burst(d.x + d.w / 2, d.y + d.h / 2, 16, "120,255,170", 3, 0.7, 2.5);
+      }
+    }
+  }
+}
+
+function checkFlips() {
+  for (const o of objects) {
+    if (o.type !== "flip") continue;
+    const inside =
+      player.x > o.x - PLAYER_R && player.x < o.x + o.w + PLAYER_R &&
+      player.y > o.y - PLAYER_R && player.y < o.y + o.h + PLAYER_R;
+
+    if (inside && !o.inside) {
+      player.g = -player.g;
+      player.vy = 0;
+      player.launched = false;
+      sfx("flip");
+      ring(player.x, player.y, "255,108,240", 90, 0.55, 4);
+      burst(player.x, player.y, 18, "255,140,245", 3.5, 0.7, 2.5);
+      shake = Math.max(shake, 0.2);
+      flash = Math.max(flash, 0.25);
+      flashColor = "255,108,240";
+    }
+    o.inside = inside;
+  }
 }
 
 function die() {
@@ -616,6 +1013,7 @@ function die() {
   flashColor = "255,70,90";
   burst(player.x, player.y, 32, "255,120,140", 4.5, 0.9, 3.5);
   burst(player.x, player.y, 14, "255,255,255", 3, 0.6, 2);
+  ring(player.x, player.y, "255,90,110", 80, 0.55, 4);
   sfx("death");
 }
 
@@ -629,7 +1027,7 @@ function win() {
   const got = shards.filter(s => s.got).length;
   const total = shards.length;
   const par = LEVELS[levelIndex].par;
-  const earned = [true, got === total, elapsed <= par];
+  const earned = [true, got === total, elapsed <= par && !hintUsed];
   const stars = earned.filter(Boolean).length;
 
   result = { got, total, par, earned, stars, time: elapsed, deaths };
@@ -643,6 +1041,8 @@ function win() {
   writeSave();
 
   burst(portal.x, portal.y, 50, theme().portalSoft, 5, 1.1, 3.5);
+  ring(portal.x, portal.y, theme().portalSoft, 190, 1.0, 5);
+  ring(portal.x, portal.y, "255,255,255", 110, 0.7, 3);
   sfx("win");
 }
 
@@ -654,7 +1054,7 @@ function showWinScreen() {
   winStarsEl.innerHTML = [
     [result.earned[0], "DIMENSION COMPLETE"],
     [result.earned[1], `ALL SHARDS (${result.got}/${result.total})`],
-    [result.earned[2], `UNDER PAR (${result.par}s)`]
+    [result.earned[2], `UNDER PAR (${result.par}s)${hintUsed ? " · NO HINTS" : ""}`]
   ].map(([ok, label]) =>
     `<li class="${ok ? "earned" : ""}"><span>${ok ? "★" : "☆"}</span>${label}</li>`
   ).join("");
@@ -676,14 +1076,20 @@ function updateRunning() {
   if (frozen) stasisMeter = Math.max(0, stasisMeter - STASIS_DRAIN * STEP);
   else if (!want) stasisMeter = Math.min(STASIS_MAX, stasisMeter + STASIS_REGEN * STEP);
 
-  if (frozen && !stasisHeld) sfx("stasis");
+  if (frozen && !stasisHeld) {
+    sfx("stasis");
+    ring(player.x, player.y, "190,235,255", 70, 0.5, 3);
+  }
   stasisHeld = frozen;
 
   if (!dragging && !panning) applyShiftKeys();
   updateMovers();
+  updateHazards();
 
   if (frozen) resolveCollisions(false);   // stasis: no walking, no gravity
   else movePlayer();
+  checkFlips();
+  checkSwitches();
 
   // collect shards
   for (const s of shards) {
@@ -691,12 +1097,14 @@ function updateRunning() {
     if (Math.hypot(player.x - s.x, player.y - s.y) < PLAYER_R + 10) {
       s.got = true;
       burst(s.x, s.y, 16, "255,230,120", 3, 0.7, 2.5);
+      ring(s.x, s.y, "255,228,138", 44, 0.5, 3);
+      popup(`${shards.filter(x => x.got).length}/${shards.length}`, s.x, s.y - 16);
       sfx("shard");
     }
   }
 
   // hazards
-  if (player.y > WORLD_H + 60 || player.y < -300 || player.x < -60 || player.x > WORLD_W + 60 || hitsSpike()) {
+  if (player.y > WORLD_H + 60 || player.y < -300 || (player.g === -1 && player.y < -60) || player.x < -60 || player.x > WORLD_W + 60 || hitsSpike()) {
     die();
     return;
   }
@@ -722,6 +1130,11 @@ function step() {
   if (state === "menu") return;
 
   objects.forEach(o => { if (o.squash > 0) o.squash = Math.max(0, o.squash - 0.07); });
+
+  if (dragging && Math.random() < 0.6) {
+    burst(dragging.x + Math.random() * dragging.w, dragging.y + Math.random() * dragging.h,
+      1, "170,220,255", 0.7, 0.5, 1.6);
+  }
 
   if (state === "ready") {
     if (!dragging && !panning) applyShiftKeys();
@@ -757,10 +1170,13 @@ function toWorld(e) {
 }
 
 function hitTest(mx, my) {
-  for (let i = objects.length - 1; i >= 0; i--) {
-    const o = objects[i];
-    const pad = o.h < 20 ? 8 : 2;
-    if (mx >= o.x - pad && mx <= o.x + o.w + pad && my >= o.y - pad && my <= o.y + o.h + pad) return o;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = objects.length - 1; i >= 0; i--) {
+      const o = objects[i];
+      if (o.fallen || isZone(o) !== (pass === 1)) continue;
+      const pad = o.h < 20 ? 8 : 2;
+      if (mx >= o.x - pad && mx <= o.x + o.w + pad && my >= o.y - pad && my <= o.y + o.h + pad) return o;
+    }
   }
   return null;
 }
@@ -775,6 +1191,16 @@ canvas.addEventListener("pointerdown", e => {
 
   const { x: mx, y: my } = toWorld(e);
   const o = hitTest(mx, my);
+
+  const limit = LEVELS[levelIndex].moves || 0;
+  if (o && !o.fixed && limit && !movedIds.has(o.id) && movedIds.size >= limit) {
+    popup("MOVE LIMIT", mx, my - 10, "255,120,140");
+    tone(150, 0.12, "square", 0.03);
+    return;
+  }
+
+  pending = captureWorld();
+  dragStart = o && !o.fixed ? { x: o.x, y: o.y } : null;
 
   if (o && !o.fixed) {
     dragging = o;
@@ -800,11 +1226,14 @@ canvas.addEventListener("pointermove", e => {
   const { x: mx, y: my } = toWorld(e);
 
   if (dragging) {
+    commitPending();
     dragging.x = mx - dragOffsetX;
     dragging.y = my - dragOffsetY;
+    if (!e.shiftKey) snapDrag(dragging);
     dragging.bx = dragging.x - dragging.ox;
     dragging.by = dragging.y - dragging.oy;
   } else if (panning) {
+    commitPending();
     shiftWorld(mx - lastX, my - lastY);
     lastX = mx;
     lastY = my;
@@ -816,8 +1245,13 @@ canvas.addEventListener("pointermove", e => {
 });
 
 function stopPointer() {
+  if (dragging && dragStart && Math.hypot(dragging.x - dragStart.x, dragging.y - dragStart.y) > 4) {
+    movedIds.add(dragging.id);
+  }
   dragging = null;
   panning = false;
+  pending = null;
+  dragStart = null;
   canvas.style.cursor = "default";
 }
 
@@ -837,8 +1271,13 @@ window.addEventListener("keydown", e => {
   if (key === "m") { toggleMute(); return; }
   if (state === "menu") return;
 
+  if ((e.ctrlKey || e.metaKey) && key === "z") { e.preventDefault(); undo(); return; }
+  if (!e.repeat && key === "u") undo();
+  if (!e.repeat && key === "h") toggleHint();
+
   if (SHIFT_KEYS.has(key)) {
     e.preventDefault();
+    if (!keys.has(key) && state === "ready") pushHistory();
     keys.add(key);
   }
 
@@ -894,6 +1333,8 @@ onClick(winMenuButton, showMenu);
 onClick(menuButton, showMenu);
 onClick(resetButton, resetLevel);
 onClick(soundButton, toggleMute);
+onClick(undoButton, undo);
+onClick(hintButton, toggleHint);
 onClick(clearSaveButton, () => {
   if (typeof confirm === "function" && !confirm("Erase all progress?")) return;
   save = { unlocked: 1, best: {} };
@@ -918,6 +1359,21 @@ function toggleMute() {
 /* ================================================================
    RENDERING
    ================================================================ */
+// Quiet generative ambience: random notes from a minor pentatonic scale.
+const MUSIC_SCALE = [0, 3, 5, 7, 10, 12, 15];
+const MUSIC_ROOTS = [110, 98, 123.47, 87.31, 103.83, 116.54, 92.5, 82.41];
+
+function playMusic() {
+  if (!audio || muted || audio.currentTime < nextNote) return;
+  const root = MUSIC_ROOTS[Math.floor(levelIndex / 2) % MUSIC_ROOTS.length];
+  const deg = MUSIC_SCALE[(Math.random() * MUSIC_SCALE.length) | 0];
+  const f = root * Math.pow(2, deg / 12) * (Math.random() < 0.3 ? 4 : 2);
+  tone(f, 1.6, "sine", 0.022);
+  if (Math.random() < 0.25) tone(f * 1.5, 1.2, "triangle", 0.012, 0, 0.15);
+  const pace = state === "running" ? 0.7 : 1;
+  nextNote = audio.currentTime + (0.45 + Math.random() * 0.5) * pace;
+}
+
 function resize() {
   const rect = canvas.getBoundingClientRect();
   screenW = rect.width;
@@ -984,6 +1440,17 @@ function drawBackground() {
     const tw = 0.7 + 0.3 * Math.sin(time * 1.6 + s.fx * 40);
     ctx.fillStyle = `rgba(${th.star},${s.alpha * tw})`;
     ctx.fillRect(x, y, s.size, s.size);
+  }
+
+  // large soft motes for depth
+  for (let i = 0; i < 14; i++) {
+    const span = screenW + 40;
+    const mx = ((((i * 211 + time * (6 + (i % 4) * 4) - camX * 0.15 * scale) % span) + span) % span) - 20;
+    const my = ((((i * 97 + Math.sin(time * 0.4 + i) * 20 + camY * 0.15 * scale) % screenH) + screenH) % screenH);
+    ctx.fillStyle = `rgba(${th.star},0.045)`;
+    ctx.beginPath();
+    ctx.arc(mx, my, 14 + (i % 3) * 8, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   // grid that slides with the world
@@ -1100,7 +1567,7 @@ function drawSpring(o) {
 }
 
 function drawMoverTrack(o) {
-  if (!o.ax && !o.ay) return;
+  if (!isMoving(o)) return;
   ctx.save();
   ctx.strokeStyle = "rgba(255,190,90,0.22)";
   ctx.lineWidth = 2;
@@ -1145,6 +1612,210 @@ function drawMover(o) {
   ctx.restore();
 }
 
+function drawIce(o) {
+  drawSlab(o, "#d6f8ff", "#2d7596", "#183b57", "#7fe3ff", "#d6f8ff");
+  ctx.save();
+  ctx.strokeStyle = "rgba(220,250,255,0.5)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = o.x + 10; x < o.x + o.w - 6; x += 38) {
+    ctx.moveTo(x, o.y + 6);
+    ctx.lineTo(x + 10, o.y + 2);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBelt(o) {
+  drawSlab(o, "#ffcf7a", "#4a3a1a", "#2c2210", "#ffa030", "#ffcf7a");
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(o.x, o.y + 3, o.w, Math.min(o.h, 30) - 3);
+  ctx.clip();
+  ctx.strokeStyle = "rgba(255,200,110,0.85)";
+  ctx.lineWidth = 2;
+  const off = (time * 30 * o.dir) % 20;
+  const cy = o.y + Math.min(o.h, 30) / 2 + 2;
+  const d = o.dir * 4;
+  for (let x = o.x - 20 + off; x < o.x + o.w + 20; x += 20) {
+    ctx.beginPath();
+    ctx.moveTo(x - d, cy - 5);
+    ctx.lineTo(x + d, cy);
+    ctx.lineTo(x - d, cy + 5);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawWind(o) {
+  ctx.save();
+  ctx.fillStyle = "rgba(120,200,255,0.07)";
+  ctx.fillRect(o.x, o.y, o.w, o.h);
+  ctx.strokeStyle = "rgba(160,220,255,0.4)";
+  ctx.lineWidth = 1.5;
+
+  const horiz = Math.abs(o.ax) > Math.abs(o.ay);
+  const dirX = Math.sign(o.ax);
+  const dirY = Math.sign(o.ay);
+  const n = Math.max(3, Math.floor((horiz ? o.h : o.w) / 22));
+
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const f = (time * 0.6 + i * 0.37) % 1;
+    if (horiz) {
+      const y = o.y + ((i + 0.5) / n) * o.h;
+      const x = dirX > 0 ? o.x + f * o.w : o.x + o.w - f * o.w;
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - dirX * 14, y);
+    } else {
+      const x = o.x + ((i + 0.5) / n) * o.w;
+      const y = dirY > 0 ? o.y + f * o.h : o.y + o.h - f * o.h;
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y - dirY * 14);
+    }
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(160,220,255,0.2)";
+  ctx.setLineDash([4, 6]);
+  ctx.strokeRect(o.x, o.y, o.w, o.h);
+  ctx.restore();
+}
+
+function drawFlip(o) {
+  const up = player.g === 1;       // chevrons show where gravity will point next
+  ctx.save();
+
+  const g = ctx.createLinearGradient(o.x, 0, o.x + o.w, 0);
+  g.addColorStop(0, "rgba(255,108,240,0)");
+  g.addColorStop(0.5, "rgba(255,108,240,0.3)");
+  g.addColorStop(1, "rgba(255,108,240,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(o.x, o.y, o.w, o.h);
+
+  ctx.shadowBlur = 12;
+  ctx.shadowColor = "#ff6cf0";
+  ctx.strokeStyle = "rgba(255,150,245,0.9)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(o.x, o.y); ctx.lineTo(o.x, o.y + o.h);
+  ctx.moveTo(o.x + o.w, o.y); ctx.lineTo(o.x + o.w, o.y + o.h);
+  ctx.stroke();
+
+  const n = Math.max(2, Math.floor(o.h / 30));
+  const cx = o.x + o.w / 2;
+  for (let i = 0; i < n; i++) {
+    const f = (time * 0.8 + i / n) % 1;
+    const y = up ? o.y + o.h - f * o.h : o.y + f * o.h;
+    const dy = up ? -6 : 6;
+    ctx.strokeStyle = `rgba(255,190,250,${Math.sin(f * Math.PI)})`;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, y - dy);
+    ctx.lineTo(cx, y);
+    ctx.lineTo(cx + 8, y - dy);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawCrumble(o) {
+  if (o.fallen && (o.fy || 0) > 140) return;
+  ctx.save();
+  const jx = o.timer > 0 && !o.fallen ? (Math.random() - 0.5) * 3 : 0;
+  ctx.translate(jx, o.fy || 0);
+  ctx.globalAlpha = o.fallen ? Math.max(0, 1 - (o.fy || 0) / 140) : 1;
+  drawSlab(o, "#e0b080", "#5a4030", "#33261c", "#c98a4a", "#e0b080");
+  ctx.strokeStyle = "rgba(20,10,5,0.7)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let x = o.x + 20; x < o.x + o.w - 10; x += 34) {
+    ctx.moveTo(x, o.y + 3);
+    ctx.lineTo(x + 5, o.y + 10);
+    ctx.lineTo(x - 2, o.y + o.h - 2);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSaw(o) {
+  const cx = o.x + o.r;
+  const cy = o.y + o.r;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(time * 7);
+  ctx.shadowBlur = 16;
+  ctx.shadowColor = "#ff4d6a";
+
+  const teeth = 12;
+  ctx.beginPath();
+  for (let i = 0; i < teeth * 2; i++) {
+    const a = (i / (teeth * 2)) * Math.PI * 2;
+    const rr = i % 2 ? o.r * 0.76 : o.r;
+    ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fillStyle = "#e8506a";
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = "#4a1624";
+  ctx.beginPath();
+  ctx.arc(0, 0, o.r * 0.52, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ffb199";
+  ctx.beginPath();
+  ctx.arc(0, 0, o.r * 0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSwitch(o) {
+  const c = linkColor(o.link);
+  ctx.save();
+  if (o.up) {
+    ctx.translate(0, o.y * 2 + o.h);
+    ctx.scale(1, -1);
+  }
+  ctx.shadowBlur = o.on ? 22 : 8;
+  ctx.shadowColor = c;
+  ctx.fillStyle = "#2a3550";
+  ctx.fillRect(o.x - 2, o.y + 6, o.w + 4, o.h - 6);
+  ctx.fillStyle = c;
+  ctx.globalAlpha = o.on ? 1 : 0.8;
+  ctx.fillRect(o.x + 4, o.y + (o.on ? 6 : 1), o.w - 8, o.on ? 4 : 9);
+  ctx.restore();
+}
+
+function drawDoor(o) {
+  const open = o.open || 0;
+  const c = linkColor(o.link);
+  const y0 = o.y + o.h * open;
+  const h = o.h - o.h * open;
+
+  ctx.save();
+  ctx.fillStyle = "#2a3550";
+  ctx.fillRect(o.x - 3, o.y + o.h - 4, o.w + 6, 4);
+
+  if (h > 1) {
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = c;
+    ctx.fillStyle = "#1c2438";
+    ctx.fillRect(o.x, y0, o.w, h);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(o.x, y0, o.w, h);
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    for (let y = y0 + 8; y < y0 + h - 4; y += 14) {
+      ctx.moveTo(o.x + 3, y + 8);
+      ctx.lineTo(o.x + o.w - 3, y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawObject(o) {
   switch (o.type) {
     case "platform":
@@ -1155,6 +1826,14 @@ function drawObject(o) {
     case "spike":  drawSpikes(o); break;
     case "bounce": drawSpring(o); break;
     case "mover":  drawMover(o); break;
+    case "ice":    drawIce(o); break;
+    case "belt":   drawBelt(o); break;
+    case "wind":   drawWind(o); break;
+    case "flip":   drawFlip(o); break;
+    case "crumble": drawCrumble(o); break;
+    case "saw":    drawSaw(o); break;
+    case "switch": drawSwitch(o); break;
+    case "door":   drawDoor(o); break;
   }
 
   if (o === dragging) {
@@ -1232,13 +1911,17 @@ function drawPortal() {
 }
 
 function drawTrail() {
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const c = player.launched ? "120,255,180" : "90,200,255";
   trail.forEach(p => {
     const t = p.life / 24;
-    ctx.fillStyle = `rgba(120,234,255,${t * 0.35})`;
+    ctx.fillStyle = `rgba(${c},${t * 0.4})`;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, PLAYER_R * 0.6 * t, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, PLAYER_R * 0.75 * t, 0, Math.PI * 2);
     ctx.fill();
   });
+  ctx.restore();
 }
 
 function drawPlayer() {
@@ -1303,6 +1986,33 @@ function drawParticles() {
   }
 }
 
+function drawRings() {
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const r of rings) {
+    const t = 1 - r.life / r.max;
+    const e = 1 - (1 - t) * (1 - t);
+    ctx.strokeStyle = `rgba(${r.rgb},${(1 - t) * 0.8})`;
+    ctx.lineWidth = r.width * (1 - t) + 0.5;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.maxR * e, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPopups() {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.font = "bold 13px Arial, sans-serif";
+  setLetterSpacing(1);
+  for (const q of popups) {
+    ctx.fillStyle = `rgba(${q.rgb},${clamp((q.life / q.max) * 1.5, 0, 1)})`;
+    ctx.fillText(q.text, q.x, q.y);
+  }
+  ctx.restore();
+}
+
 function setLetterSpacing(px) {
   if ("letterSpacing" in ctx) ctx.letterSpacing = px + "px";
 }
@@ -1361,6 +2071,46 @@ function drawHud() {
   ctx.font = "9px Arial, sans-serif";
   ctx.fillText("STASIS", screenW / 2, by - 6);
 
+  const limit = lvl.moves || 0;
+  if (limit) {
+    const used = movedIds.size + (dragging && !movedIds.has(dragging.id) ? 1 : 0);
+    ctx.textAlign = "left";
+    ctx.font = "11px Arial, sans-serif";
+    ctx.fillStyle = used >= limit ? "#ff9aa8" : "rgba(140,159,202,0.9)";
+    setLetterSpacing(2);
+    ctx.fillText(`MOVES ${used}/${limit}`, 14, screenH - 16);
+  }
+
+  ctx.restore();
+}
+
+function drawHintGhosts() {
+  if (!hintOn) return;
+  const sol = LEVELS[levelIndex].solution;
+  if (!sol) return;
+
+  ctx.save();
+  ctx.lineWidth = 2;
+  for (const [id, x, y] of sol) {
+    const o = objects.find(q => q.id === id);
+    if (!o) continue;
+    const gx = x + camX;
+    const gy = y + camY;
+
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = "#ffe48a";
+    ctx.beginPath();
+    ctx.moveTo(o.x + o.w / 2, o.y + o.h / 2);
+    ctx.lineTo(gx + o.w / 2, gy + o.h / 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.9;
+    ctx.setLineDash([6, 5]);
+    ctx.fillStyle = "rgba(255,228,138,0.10)";
+    ctx.fillRect(gx, gy, o.w, o.h);
+    ctx.strokeRect(gx, gy, o.w, o.h);
+  }
   ctx.restore();
 }
 
@@ -1406,6 +2156,16 @@ function drawReadyOverlay() {
 }
 
 function drawOverlays() {
+  // permanent soft vignette
+  const vg = ctx.createRadialGradient(
+    screenW / 2, screenH / 2, Math.min(screenW, screenH) * 0.45,
+    screenW / 2, screenH / 2, Math.max(screenW, screenH) * 0.78
+  );
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(1, "rgba(0,0,0,0.45)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, screenW, screenH);
+
   // frost vignette while the traveler is held in stasis
   if (state === "running" && stasisHeld) {
     const g = ctx.createRadialGradient(
@@ -1437,13 +2197,22 @@ function draw() {
   ctx.translate(offX + sx, offY + sy);
   ctx.scale(scale, scale);
 
-  objects.forEach(o => { if (o.type === "mover") drawMoverTrack(o); });
+  const ie = 1 - Math.pow(1 - introT, 3);
+  ctx.save();
+  ctx.globalAlpha = ie;
+  ctx.translate(0, (1 - ie) * 24);
+  objects.forEach(drawMoverTrack);
   objects.forEach(drawObject);
   shards.forEach(drawShard);
   drawPortal();
+  ctx.restore();
+
+  drawHintGhosts();
   drawTrail();
   drawPlayer();
   drawParticles();
+  drawRings();
+  drawPopups();
   ctx.restore();
 
   drawOverlays();
@@ -1460,13 +2229,14 @@ function gameLoop(now) {
   const delta = Math.min((now - lastFrame) / 1000, 0.1);
   lastFrame = now;
   time += delta;
-  accumulator += delta;
+  accumulator += delta * (state === "won" ? 0.4 : 1);
 
   while (accumulator >= STEP) {
     step();
     accumulator -= STEP;
   }
 
+  playMusic();
   stasisButton.classList.toggle("active", state === "running" && stasisHeld);
   draw();
   requestAnimationFrame(gameLoop);
